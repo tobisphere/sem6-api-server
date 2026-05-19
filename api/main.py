@@ -1,12 +1,29 @@
 import os
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 
 api = FastAPI(title="Fast API")
 
+origins = [
+    "http://localhost",
+    "http://localhost:8080",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+    "https://raspberrypi.tail1480d1.ts.net"
+]
+
+api.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Configuration
-UPLOAD_DIR = "/app/uploads"
+UPLOAD_DIR = "/api/uploads"
 
 # Ensure the upload directory exists within the container
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -15,7 +32,15 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 async def root():
     return {"message": "FastAPI is running. Ready for uploads."}
 
-@api.post("/upload")
+@api.get("/api/fetch")
+async def fetch_file():
+   try:
+	file_location = os.path.join(UPLOAD_DIR, "photo.png")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching file: {str(e)}")
+
+@api.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     """
     Accepts a file and saves it to the local mounted volume.
@@ -48,3 +73,4 @@ async def upload_file(file: UploadFile = File(...)):
 @api.get("/health")
 async def health_check():
     return {"status": "healthy", "storage_path": UPLOAD_DIR}
+
