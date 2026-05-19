@@ -1,6 +1,7 @@
 import os
+import glob
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 
@@ -34,11 +35,17 @@ async def root():
 
 @api.get("/api/fetch")
 async def fetch_file():
-   try:
-	file_location = os.path.join(UPLOAD_DIR, "photo.png")
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching file: {str(e)}")
+    # Find all png files in the upload dir
+    files = glob.glob(os.path.join(UPLOAD_DIR, "*.png"))
+    if not files:
+        raise HTTPException(status_code=404, detail="No photos found.")
+    # Get the most recent one based on modification time
+    latest_file = max(files, key=os.path.getmtime)
+    return FileResponse(
+        path=latest_file,
+        media_type='image/png',
+        filename=os.path.basename(latest_file)
+    )
 
 @api.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -48,7 +55,6 @@ async def upload_file(file: UploadFile = File(...)):
     try:
         # Sanitize filename to prevent directory traversal attacks
         file_location = os.path.join(UPLOAD_DIR, file.filename)
-        
         # Check if file already exists to avoid overwriting (optional logic)
         if os.path.exists(file_location):
             base, ext = os.path.splitext(file.filename)
