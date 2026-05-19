@@ -6,7 +6,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - /mnt/usb-storage/semester6project/uploads:/api/uploads
+      - /mnt/usb-storage/sem6-api-server/uploads:/api/uploads
     restart: unless-stopped
     networks:
       - app-network
