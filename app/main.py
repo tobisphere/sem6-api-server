@@ -37,21 +37,6 @@ UPLOAD_DIR = "../uploads"
 MAX_IMAGES = 3
 MODEL_PATH = "model/resnet18_sketch_model.pth"
 KNOWN_UNSAFE_HASHES = set()
-BLOCKED_WORDS = [
-    "sex",
-    "porn",
-    "nigger",
-    "niga",
-    "nazi",
-    "rape",
-    "terrorist",
-    "kill",
-    "suicide",
-    "fuck",
-    "bitch",
-    "slur",
-    "nsfw",
-]
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -141,11 +126,54 @@ async def fetch_all_images():
 
 
 @app.post("/app/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_and_validate(file: UploadFile = File(...)):
     """
-    Accepts a file and saves it.
+    Uploads a file, validates it, and only saves if safe.
     """
     try:
+        content = await file.read()
+        image_hash = get_image_hash(content)
+        if image_hash in KNOWN_UNSAFE_HASHES:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "rejected",
+                    "prediction": "unsafe",
+                    "confidence": 1.0,
+                    "reason": "known_unsafe_image",
+                    "message": "File rejected: known unsafe content",
+                },
+            )
+        image = Image.open(io.BytesIO(content)).convert("RGB")
+        image_tensor = transform(image)
+        image_tensor = image_tensor.unsqueeze(0)
+        with torch.no_grad():
+            outputs = model(image_tensor)
+            probabilities = torch.softmax(outputs, dim=1)
+            confidence, predicted = torch.max(probabilities, 1)
+        prediction = labels[predicted.item()]
+        confidence_score = round(confidence.item(), 4)
+        if confidence_score < 0.75:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "rejected",
+                    "prediction": "too_unsafe",
+                    "confidence": confidence_score,
+                    "message": "Low confidence prediction",
+                },
+            )
+        if prediction == "unsafe":
+            KNOWN_UNSAFE_HASHES.add(image_hash)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "rejected",
+                    "prediction": "unsafe",
+                    "confidence": confidence_score,
+                    "message": "File rejected: detected as unsafe content",
+                },
+            )
         existing_files = glob.glob(os.path.join(UPLOAD_DIR, "photo_*.png"))
         if existing_files:
             numbers = []
@@ -163,63 +191,33 @@ async def upload_file(file: UploadFile = File(...)):
         new_filename = f"photo_{next_num}.png"
         file_location = os.path.join(UPLOAD_DIR, new_filename)
 
-        content = await file.read()
         with open(file_location, "wb") as buffer:
             buffer.write(content)
 
         deleted_count = cleanup_old_images()
-        return {
-            "original_filename": file.filename,
-            "new_filename": new_filename,
-            "size": len(content),
-            "path": file_location,
-            "deleted_old_files": deleted_count,
-            "message": "File uploaded successfully.",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "accepted",
+                "original_filename": file.filename,
+                "new_filename": new_filename,
+                "size": len(content),
+                "path": file_location,
+                "prediction": prediction,
+                "confidence": confidence_score,
+                "deleted_old_files": deleted_count,
+                "message": "File uploaded and validated successfully.",
+            },
+        )
 
-
-@app.post("app/predict")
-async def predict_image(file: UploadFile = File(...)):
-    try:
-        image_bytes = await file.read()
-        image_hash = get_image_hash(image_bytes)
-        lower_name = file.filename.lower()
-        if image_hash in KNOWN_UNSAFE_HASHES:
-            return JSONResponse(
-                {
-                    "prediction": "unsafe",
-                    "confidence": 1.0,
-                    "reason": "known_unsafe_image",
-                }
-            )
-        for word in BLOCKED_WORDS:
-            if word in lower_name:
-                KNOWN_UNSAFE_HASHES.add(image_hash)
-                return JSONResponse(
-                    {
-                        "prediction": "unsafe",
-                        "confidence": 1.0,
-                        "reason": f"blocked_word:{word}",
-                    }
-                )
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        image_tensor = transform(image)
-        image_tensor = image_tensor.unsqueeze(0)
-        with torch.no_grad():
-            outputs = model(image_tensor)
-            probabilities = torch.softmax(outputs, dim=1)
-            confidence, predicted = torch.max(probabilities, 1)
-        prediction = labels[predicted.item()]
-        confidence_score = round(confidence.item(), 4)
-        if confidence_score < 0.75:
-            prediction = "review_required"
-        if prediction == "unsafe":
-            KNOWN_UNSAFE_HASHES.add(image_hash)
-        return JSONResponse({"prediction": prediction, "confidence": confidence_score})
     except Exception as e:
-        return JSONResponse({"error": str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(e),
+                "message": "Internal server error during upload/validation",
+            },
+        )
 
 
 @app.get("/health")
