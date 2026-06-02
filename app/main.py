@@ -33,7 +33,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = "../uploads"
+UPLOAD_DIR = "/api/uploads"
 MAX_IMAGES = 3
 MODEL_PATH = "model/resnet18_sketch_model.pth"
 KNOWN_UNSAFE_HASHES = set()
@@ -86,6 +86,34 @@ labels = ["safe", "unsafe"]
 @app.get("/")
 async def root():
     return {"message": "FastAPI is running. Ready for uploads."}
+
+
+@app.get("/app/fetchi/{index}")
+async def fetch_file_by_index(index: int):
+    """
+    Fetch a specific photo by index (1 = most recent, 2 = second most recent, etc.)
+    """
+    if index < 1:
+        raise HTTPException(status_code=400, detail="Index must be >= 1")
+
+    pattern = os.path.join(UPLOAD_DIR, "photo_*.png")
+    files = glob.glob(pattern)
+
+    if not files:
+        raise HTTPException(status_code=404, detail="No photos found.")
+
+    files_sorted = sorted(files, key=os.path.getmtime, reverse=True)
+    if index > len(files_sorted):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Only {len(files_sorted)} photos available. Requested index {index}.",
+        )
+    selected_file = files_sorted[index - 1]
+    return FileResponse(
+        path=selected_file,
+        media_type="image/png",
+        filename=os.path.basename(selected_file),
+    )
 
 
 @app.get("/app/fetch")
