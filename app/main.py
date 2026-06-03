@@ -23,6 +23,7 @@ origins = [
     "http://127.0.0.1:5500",
     "http://127.0.0.1:57391",
     "https://raspberrypi.tail1480d1.ts.net",
+    "https://project.cmi.hr.nl",
 ]
 
 app.add_middleware(
