@@ -1,8 +1,3 @@
-on raspberry pi turn on funnel for external access:
-sudo tailscale funnel 80
-it produces this link: 
-https://raspberrypi.tail1480d1.ts.net/
-
 # Image Upload API
 
 This project runs an image upload server that automatically checks whether uploaded images are safe using an AI model. It uses **FastAPI** (the backend), **Nginx** (a reverse proxy that handles incoming requests), and **Docker** (which packages everything so it runs the same way on any machine).
@@ -26,8 +21,8 @@ cd <sem6-api-server>
 The project saves uploaded images to a folder on your machine. You need to create it first:
 
 ```bash
-sudo mkdir -p /mnt/storage/sem6-api-server/uploads
-sudo chmod 777 /mnt/storage/sem6-api-server/uploads
+sudo mkdir -p uploads
+sudo chmod 777 uploads
 ```
 
 > If you want to use a different folder, open `docker-compose.yml` and change the left side of the volume line under `fastapi`:
@@ -41,7 +36,7 @@ sudo chmod 777 /mnt/storage/sem6-api-server/uploads
 The project needs a trained model file to check whether images are safe. Place the file at:
 
 ```
-app/model/resnet18_sketch_model.pth
+app/model/
 ```
 
 Your folder structure should look like this:
@@ -50,7 +45,7 @@ Your folder structure should look like this:
 .
 ├── app/
 │   ├── model/
-│   │   └── resnet18_sketch_model.pth   ← file goes here
+│   │   └── model.pth   ← model goes here
 │   ├── main.py
 │   └── ...
 └── docker-compose.yml
@@ -79,12 +74,9 @@ INFO:     Uvicorn running on http://0.0.0.0:8080
 
 That means the server is running.
 
----
-
 ## Step 6 — Using the API
 
 Once the server is running, you can access it from your browser or any tool like `curl`.
-
 Replace `localhost` with your machine's IP address or hostname if accessing from another device.
 
 ### Check the server is alive
@@ -145,7 +137,7 @@ GET http://localhost/app/fetchi/1
 - `/2` = second most recent
 - `/3` = third most recent
 
-The server keeps a maximum of **3 images** at a time. Older ones are automatically deleted when a new one is saved. You can change this inside the main.py file at MAX_IMAGES.
+The server keeps a maximum of **3 images** at a time. Older ones are automatically deleted when a new one is saved. You can change the maximum images inside the main.py file at MAX_IMAGES.
 
 ### List all stored images
 
@@ -207,7 +199,7 @@ sudo docker logs -f api-monitizer
 | `permission denied` on build.sh | Run `chmod +x build.sh` first |
 | 404 on `/app/fetchi/1` | Make sure the uploads folder exists and has images in it |
 | Model error on startup | Check that `app/model/resnet18_sketch_model.pth` exists |
-| Port 80 already in use | Stop any other web server: `sudo systemctl stop apache2` or `sudo systemctl stop nginx` |
+| Port 80 already in use | Stop any other web server or change their ports: `sudo systemctl stop apache2` or `sudo systemctl stop nginx` |
 | Images not saving | Check the uploads folder path in `docker-compose.yml` matches the folder you created |
 | 'CORS Failed' on api call | Add current origin to the origins list at main.py | 
 
@@ -248,3 +240,12 @@ http://raspberrypi.tail1234.ts.net/app/fetch
 - Only logged-in Tailscale devices on your account can connect
 - Traffic is encrypted end-to-end
 The no-authentication limitation of this project is much less risky when using Tailscale, because only your own trusted devices can reach the server in the first place.
+
+### Tailscale Funnel (Caution)
+If you do want the server to be publicly available run the command
+
+```bash
+sudo tailscale funnel 80
+```
+
+It will give you a public domain that you can access. Also make sure to add this domain to your origins within main.py
